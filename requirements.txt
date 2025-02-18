@@ -1,0 +1,17 @@
+openai
+streamlit
+stripe
+redis
+psycopg2
+supabase
+tiktoken
+pymupdf  # PyMuPDF for PDF processing
+python-docx
+python-dotenv
+logging
+schedule
+apscheduler
+bcrypt
+fitz #PyMuPDF
+asyncio
+pandas
