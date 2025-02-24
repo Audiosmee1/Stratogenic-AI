@@ -4,8 +4,9 @@ import docx
 import pandas as pd
 import re  # ✅ Regular expressions (built-in, no installation needed)
 
+from prompt_library.archetype_prompts import archetype_prompts
 
-def extract_text(files, summarize=False, user_plan="The Foundation (Free)"):
+def extract_text(files, summarize=False, user_plan="The Foundation (Free)", archetype=None):
     """
     Extracts text from multiple PDF and DOCX files.
     Optionally summarizes long documents based on user plan.
@@ -32,6 +33,11 @@ def extract_text(files, summarize=False, user_plan="The Foundation (Free)"):
         # ✅ Ensure meaningful fallback if empty
         if not extracted_text.strip():
             extracted_text = "No content extracted."
+
+        # ✅ Apply Archetypal Interpretation
+        if archetype:
+                extracted_text = f"📌 **{archetype} Interpretation:** {archetype_prompts.get(archetype, 'Default archetypal reasoning.')}\n\n{extracted_text}"
+
 
         # ✅ Summarize if necessary
         if summarize and len(extracted_text) > max_doc_tokens:
@@ -77,7 +83,7 @@ def extract_financial_data(files, summarize=False, user_plan="The Foundation (Fr
 
     return extracted_data
 
-def pre_screen_documents(extracted_texts):
+def pre_screen_documents(extracted_texts, archetype=None):
     """
     Pre-screens documents to determine relevance, contradictions, and compatibility.
     """
@@ -93,15 +99,16 @@ def pre_screen_documents(extracted_texts):
     combined_texts = truncate_text("\n\n".join(extracted_texts.values()), max_chars=8000)
 
     pre_screen_prompt = f"""
-    You are an AI document analyst. Assess the relationship between these documents:
+    You are an AI document analyst specializing in {archetype} strategic thinking.
+    Analyze the following documents from the perspective of {archetype} leadership:
 
-    1️⃣ **Are the documents thematically related?**  
-    2️⃣ **Do they contain contradictory information?**  
-    3️⃣ **Are any documents irrelevant to the others?**  
-    4️⃣ **Summarize how these documents interconnect.**  
+    1️⃣ **Are the documents thematically aligned with {archetype} priorities?**  
+    2️⃣ **Which sections hold the most strategic value for {archetype} decision-making?**  
+    3️⃣ **Are any documents contradictory or unsuitable for this approach?**  
+    4️⃣ **Provide a strategic summary based on {archetype}'s decision-making style.**  
 
     📂 **Documents Included:** {len(extracted_texts)}  
-    📖 **Document Content (Condensed):**  
+    📖 **Condensed Document Content:**  
     {combined_texts}
     """
 
@@ -114,7 +121,7 @@ def pre_screen_documents(extracted_texts):
     except Exception as e:
         return f"Pre-screening failed: {str(e)}"
 
-def analyze_patterns(extracted_texts, max_chars=5000):
+def analyze_patterns(extracted_texts, max_chars=5000, archetype=None):
     """
     Performs AI-powered pattern recognition if 3 or more documents are uploaded.
     Prioritizes key sections before truncating.
@@ -144,11 +151,17 @@ def analyze_patterns(extracted_texts, max_chars=5000):
     combined_texts = "\n\n".join(truncated_texts)
 
     pattern_prompt = f"""
-    You are an AI document analyst. Identify patterns across the following documents:
+    You are an AI strategist analyzing patterns using {archetype} reasoning.
+    Identify key insights based on {archetype}'s decision-making priorities.
 
     📂 **Documents Included:** {len(extracted_texts)}
-    📖 **Condensed Document Content:**  
-    {combined_texts}
+    🔹 **Key Business Insights Identified:**  
+    1️⃣ **What trends or patterns emerge across documents?**  
+    2️⃣ **Which findings align most with {archetype}'s strategic focus?**  
+    3️⃣ **What immediate actions should be taken based on these insights?**  
+
+    📖 **Strategic Content Extracted:**  
+    {combined_texts[:5000]}  # ✅ Now only analyzing the first 5,000 high-priority tokens
     """
 
     try:
@@ -160,14 +173,25 @@ def analyze_patterns(extracted_texts, max_chars=5000):
     except Exception as e:
         return f"AI pattern analysis failed: {str(e)}"
 
-def summarize_text(text, max_tokens=1000):
+def summarize_text(text, max_tokens=1000, archetype=None):
     """
     Summarizes extracted text to reduce token count before sending to OpenAI.
     """
     if not text:
         return "No text to summarize."
 
-    summary_prompt = f"Summarize this document within {max_tokens} tokens:\n\n{text[:5000]}"
+    summary_prompt = f"""
+    You are an AI business strategist using {archetype} reasoning.
+    Summarize this document according to {archetype}'s leadership principles:
+
+    📌 **Key Insights for {archetype} Decision-Making:**  
+    1️⃣ **What stands out as most valuable to a {archetype} leader?**  
+    2️⃣ **Which risks and opportunities align with this leadership style?**  
+    3️⃣ **How should a {archetype} thinker act on this information?**  
+    
+    📖 **Source Document (Condensed to {max_tokens} tokens):**  
+    {text[:max_tokens * 4]}  # ✅ Dynamically apply `max_tokens` for input truncation
+    """
 
     try:
         response = openai.ChatCompletion.create(

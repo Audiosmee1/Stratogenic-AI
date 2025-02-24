@@ -1,11 +1,19 @@
 import re
 from app.main import process_user_request
-from app.user_management import check_one_time_access
+from app.user_management import check_one_time_access, is_admin
 from app.config import PLAN_DETAILS
 from app.cache_manager import get_cached_response, cache_response, track_query_count, track_follow_up_count, get_user_query_count, get_user_follow_up_count
 
 def check_usage_limit(user_id, user_plan, usage_type):
     """Checks if the user has exceeded their plan's limit OR if they have one-time Enterprise access."""
+    # ✅ Bypass all limits for Admin users
+    admin_status = is_admin(user_id)
+    print(f"🔍 Debugging Admin Check - User ID: {user_id}, Is Admin: {admin_status}")
+
+    if admin_status:
+        print(f"✅ Admin Bypass Applied for User ID: {user_id}")
+        return True  # ✅ Admins have unlimited access
+
     if user_plan == "One-Time Enterprise Report (£25)":
         return check_one_time_access(user_id) > 0
 
@@ -24,8 +32,7 @@ def check_usage_limit(user_id, user_plan, usage_type):
 def preprocess_query(query):
     """Trims unnecessary words from user queries while keeping meaning intact."""
     query = query.strip()
-    query = re.sub(r'\b(hey|hi|please|thanks|wondering|could you help me with|can you tell me)\b', '', query,
-                   flags=re.IGNORECASE)
+    query = re.sub(r'\b(hey|hi|thanks|wondering)\b', '', query, flags=re.IGNORECASE)
     query = re.sub(r'\s+', ' ', query).strip()
     return query.capitalize()
 
@@ -69,7 +76,7 @@ def generate_follow_up_response(query, user_id, archetype, user_plan):
     """
     Handles follow-up queries, ensuring they check Redis first and enforce limits.
     """
-    cache_key = f"follow_up:{user_id}:{query}"
+    cache_key = f"follow_up:{user_id}:{archetype}:{query}"
     cached_follow_up = get_cached_response(cache_key)
 
     if cached_follow_up:

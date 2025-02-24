@@ -10,6 +10,26 @@ def hash_password(password):
 def check_password(password, hashed_password):
     return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
 
+def is_admin(user_id):
+    """Returns True if the user is an Admin."""
+    conn = get_db_connection()
+    if not conn:
+        return False
+
+    cursor = None
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT is_admin FROM users WHERE id = %s;", (user_id,))
+        result = cursor.fetchone()
+        return result[0] if result else False
+    except Exception as e:
+        print(f"❌ Admin check failed: {e}")
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+        release_db_connection(conn)
+
 # ✅ Register new user
 def register_user(email, password):
     """Registers a new user with hashed password."""

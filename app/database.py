@@ -158,7 +158,7 @@ def create_user_feedback_table():
         release_db_connection(conn)
 
 # ✅ Store user query
-def log_user_query(user_id, query, response, plan):
+def log_user_query(user_id, query, response, plan, archetype):
     """Stores user query logs along with AI responses."""
     conn = get_db_connection()
     if not conn:
@@ -168,8 +168,8 @@ def log_user_query(user_id, query, response, plan):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO query_logs (user_id, query, response, plan)
-            VALUES (%s, %s, %s, %s);
+              INSERT INTO query_logs (user_id, query, archetype, response, plan, created_at)
+            VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP);
         """, (user_id, query, response, plan))
         conn.commit()
     except Exception as e:
@@ -178,6 +178,30 @@ def log_user_query(user_id, query, response, plan):
         if cursor:
             cursor.close()
         release_db_connection(conn)
+
+def create_strategy_reports_table():
+    """Creates the strategy_reports table for storing user-generated strategy PDFs."""
+    conn = get_db_connection()
+    if not conn:
+        return
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS strategy_reports (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                pdf_filename TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.commit()
+        print("✅ Strategy Reports table ready.")
+    except Exception as e:
+        print(f"❌ Failed to create strategy_reports table: {e}")
+    finally:
+        release_db_connection(conn)
+
 
 
 def get_recent_queries_with_responses(user_id, limit=10):

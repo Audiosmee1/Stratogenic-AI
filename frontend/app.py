@@ -6,6 +6,10 @@ import streamlit as st
 # ✅ Ensure Python finds 'app/' directory
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from prompt_library.archetype_prompts import archetype_prompts  # ✅ Import archetype prompts
+from prompt_library.expert_prompts import expert_prompts  # ✅ Import expert prompts
+from app.strategy_pdf import generate_strategy_pdf  # ✅ Import the strategy PDF generation function
+
 from prompt_library.short_descriptions import archetype_descriptions, expert_descriptions
 from prompt_library.expert_prompts import EXPERT_CATEGORIES  # ✅ Now correctly imported
 from app.cache_manager import get_cached_response, cache_response
@@ -27,12 +31,30 @@ if "email" not in st.session_state:
     st.session_state["email"] = None
 if "is_admin" not in st.session_state:
     st.session_state["is_admin"] = False
+# ✅ Ensure session state variables are initialized
+if "query_submitted" not in st.session_state:
+    st.session_state["query_submitted"] = False  # ✅ Default value
+if "selected_archetype" not in st.session_state:
+    st.session_state["selected_archetype"] = None  # ✅ Default to None
+if "selected_experts" not in st.session_state:
+    st.session_state["selected_experts"] = []  # ✅ Default empty list
 if "doc_usage_option" not in st.session_state:
     st.session_state["doc_usage_option"] = "Support AI Response"
+if "selected_experts_tab1" not in st.session_state:
+    st.session_state["selected_experts_tab1"] = []  # ✅ Default to an empty list
+if "selected_experts_tab2" not in st.session_state:
+    st.session_state["selected_experts_tab2"] = []  # ✅ Default to an empty list
+
 doc_usage_option = st.session_state["doc_usage_option"]
 
+# ✅ Set path to the logo image
+logo_path = os.path.join(os.path.dirname(__file__), "assets", "Statogenic AI.png")
+
+# ✅ Display the logo
+st.image(logo_path, use_container_width=True)
+
 # ✅ Streamlit UI
-st.title("♟️ Stratogenic AI - AI-Driven Strategy Generator")
+st.title("Stratogenic AI - AI-Driven Strategy Generator")
 
 # ✅ Ensure `follow_up_query` is always defined
 follow_up_query = ""
@@ -143,7 +165,6 @@ if st.session_state["user_id"]:
 if "user_id" in st.session_state and st.session_state["user_id"]:
     user_id = st.session_state["user_id"]
 
-
     # ✅ Fetch recent queries & responses from the database
     recent_queries = get_recent_queries_with_responses(user_id)
 
@@ -183,187 +204,310 @@ if "user_id" in st.session_state and st.session_state["user_id"]:
         st.write("⚠️ No past queries found.")
 
 if st.session_state["user_id"]:
-    st.subheader("🧠 Generate Your AI Strategy")
+    # ✅ Create Tabs for AI Strategy & PDF Strategy Report
+    tab1, tab2 = st.tabs(["🧠 AI Insight Generator", "📜 Structured Strategy Report"])
 
-    # ✅ Archetype Selection with Short Descriptions
-    selected_archetype = st.selectbox(
-        "🎭 Select an Archetype",
-        options=[f"{archetype} - {desc}" for archetype, desc in archetype_descriptions.items()]
-    )
+    # ✅ Tab 1: AI Strategy Generator
+    with tab1:
+        if st.session_state["user_id"]:
+            st.subheader("🧠 Define Your Focus")
 
-    # ✅ Extract the Archetype Name Only (Removing the Description for Processing)
-    selected_archetype = selected_archetype.split(" - ")[0]
+        # ✅ Ensure Archetype is Stored in Session State for Tab 1
+        if "selected_archetype_tab1" not in st.session_state:
+            st.session_state["selected_archetype_tab1"] = list(archetype_descriptions.keys())[
+                0]  # Default to first archetype
 
-    # ✅ Grouped Experts (Keeps Categories as Labels)
-    grouped_experts = []
-    expert_map = {}  # ✅ Keeps track of expert name mapping for later processing
+        selected_archetype = st.selectbox(
+            "🎭 Select an Archetype",
+            options=[f"{archetype} - {desc}" for archetype, desc in archetype_descriptions.items()],
+            index=list(archetype_descriptions.keys()).index(st.session_state["selected_archetype_tab1"])
+        )
 
-    for category, experts in EXPERT_CATEGORIES.items():
-        grouped_experts.append(f"🔹 {category} (Category)")  # ✅ Non-selectable label
-        for expert in experts:
-            # ✅ Fetch expert description from `expert_descriptions`, fallback if missing
-            description = expert_descriptions.get(expert, "No description available")
-            formatted_name = f"   ├── {expert} - {description}"  # ✅ Indented expert with description
-            grouped_experts.append(formatted_name)
-            expert_map[formatted_name] = expert  # ✅ Map formatted display to actual expert name
+        st.session_state["selected_archetype_tab1"] = selected_archetype.split(" - ")[0]  # ✅ Remove description
 
-    # ✅ Allow Users to Select Any Experts (Total Limited by Plan)
-    max_experts = PLAN_DETAILS[st.session_state["user_plan"]]["max_experts"]
-    selected_experts_display = st.multiselect(
-        f"🔍 Select Experts (Max: {max_experts} total)", grouped_experts, max_selections=max_experts
-    )
+        # ✅ Ensure `selected_experts_tab1` is initialized before using it
+        if "selected_experts_tab1" not in st.session_state:
+            st.session_state["selected_experts_tab1"] = []  # ✅ Default to an empty list
 
-    # ✅ Extract Clean Expert Names (Removing Indentation & Category Labels)
-    selected_experts = [
-        expert_map[display_name].split(" - ")[0] for display_name in selected_experts_display if
-        not display_name.startswith("🔹")
-    ]
+        # ✅ Grouped Experts (Keeps Categories as Labels)
+        grouped_experts = []
+        expert_map = {}  # ✅ Keeps track of expert name mapping for later processing
 
-    # ✅ Ensure selected experts are stored properly in session (Remove descriptions before processing)
-    selected_experts = [
-        expert.split(" - ")[0] for expert in selected_experts if not expert.startswith("🔹")
-    ]
+        for category, experts in EXPERT_CATEGORIES.items():
+            grouped_experts.append(f"🔹 {category} (Category)")  # ✅ Non-selectable label
+            for expert in experts:
+                # ✅ Fetch expert description from `expert_descriptions`, fallback if missing
+                description = expert_descriptions.get(expert, "No description available")
+                formatted_name = f"   ├── {expert} - {description}"  # ✅ Indented expert with description
+                grouped_experts.append(formatted_name)
+                expert_map[formatted_name] = expert  # ✅ Map formatted display to actual expert name
 
-    if not selected_experts:
-        st.warning("⚠ Please select at least one expert.")
-    else:
-        st.session_state["selected_experts"] = selected_experts
+        # ✅ Allow Users to Select Any Experts (Total Limited by Plan)
+        max_experts = PLAN_DETAILS[st.session_state["user_plan"]]["max_experts"]
 
-    # ✅ Document Upload UI
-    max_documents = PLAN_DETAILS[st.session_state["user_plan"]]["documents"]
-    uploaded_files = st.file_uploader(
-        f"📂 Upload up to {PLAN_DETAILS[st.session_state['user_plan']]['documents']} documents (Max 10 pages each)",
-        type=["pdf", "docx", "xlsx", "csv"],
-        accept_multiple_files=True
-    )
+        # ✅ Create multiselect widget WITHOUT modifying session state afterward
+        selected_experts_display_tab1 = st.multiselect(
+            f"🔍 Select Experts (Max: {max_experts} total)",
+            options=grouped_experts,
+            default=st.session_state.get("selected_experts_tab1", []),  # ✅ Use `.get()` to avoid KeyError
+            max_selections=max_experts,
+            key="selected_experts_tab1"
+        )
 
-    # ✅ Show a warning for free/lower-tier users
-    if max_documents == 1:
-        st.warning(
-            "⚠️ Multi-document analysis is a **premium feature**. Upgrade to a higher plan to analyze multiple documents together.")
-    if uploaded_files and len(uploaded_files) > max_documents:
-        st.error(
-            f"❌ Your plan allows only {max_documents} document(s) per upload. Upgrade to a higher tier for multi-document analysis.")
-        uploaded_files = uploaded_files[:max_documents]  # ✅ Restrict uploaded files to allowed limit
-    # ✅ Upgrade Prompt for Free Users
-    if max_documents == 1 and len(uploaded_files) == 1:
-        if st.button("🚀 Upgrade to Unlock Multi-Document Analysis"):
-            st.markdown("[Upgrade Now](https://your-upgrade-url.com)")  # ✅ Replace with actual upgrade link
+        # ✅ Extract Clean Expert Names (Removing Indentation & Category Labels)
+        selected_experts = [
+            expert_map[display_name].split(" - ")[0] for display_name in selected_experts_display_tab1 if
+            not display_name.startswith("🔹")
+        ]
 
+        if "selected_experts_tab1" not in st.session_state:
+            st.session_state["selected_experts_tab1"] = []  # ✅ Default to an empty list
+        elif set(selected_experts_tab1) != set(st.session_state["selected_experts_tab1"]):
+            st.session_state["selected_experts_tab1"] = selected_experts_tab1  # ✅ Update only when needed
 
-    # ✅ Query Input
+        # ✅ Ensure at least one expert is selected (correctly checking the extracted expert list)
+        if len(selected_experts) == 0:
+            st.warning("⚠ Please select at least one expert.")
 
-    # ✅ Define Query Disclaimer Modal State
-    if "show_query_disclaimer" not in st.session_state:
-        st.session_state["show_query_disclaimer"] = True  # ✅ Show it only on first query input
-
-    # ✅ Show Query Disclaimer Before Allowing Input
-    if st.session_state["show_query_disclaimer"]:
-        with st.expander("🔍 Improve Your Query for Better AI Results!", expanded=True):
-            st.write(
-                "Your query **directly affects** the quality of the response. Here are some tips for best results:")
-            st.markdown("""
-            - ✅ **Be specific**: Instead of "How do I grow?", try "What are the best customer retention strategies for a SaaS company?"  
-            - ✅ **Include relevant details**: AI performs better with **industry**, **target audience**, or **specific goals**.  
-            - ❌ **Avoid vague requests**: "Tell me about business" → **This will produce a generic response.**  
-            - ⚡ **Keep it clear and structured**: AI works best when queries are **concise** but **informative**.
-            """)
-
-            # ✅ Require Confirmation Before Proceeding
-            if st.button("Got it! Proceed to Query Input"):
-                st.session_state["show_query_disclaimer"] = False  # ✅ Hide the modal
-                st.rerun()  # ✅ Refresh the UI
-
-    query = ""  # ✅ Ensures `query` is always defined
-
-    # ✅ Query Input Box (Now Appears Only After Confirmation)
-    if not st.session_state["show_query_disclaimer"]:
-        query = st.text_area("📝 Enter Your Query:",
-                             placeholder="e.g., What are the best customer retention strategies for SaaS?")
-
-
-    # ✅ Generate Insight Button
-        def get_ai_response():
-            return generate_response(
-                user_id=st.session_state["user_id"],
-                query=query,
-                archetype=selected_archetype,
-                selected_experts=selected_experts,
-                uploaded_files=uploaded_files if uploaded_files else None,
-                user_plan=st.session_state["user_plan"]
-            )
-
-
-        if st.button("🚀 Generate Insight"):
-            if not query:
-                st.warning("⚠ Please enter a query.")
-            else:
-                with st.spinner("✨ Generating AI-powered strategy..."):
-                    cache_key = f"user_query:{st.session_state['user_id']}:{query}"
-                    cached_response = get_cached_response(cache_key)
-
-                    if cached_response:
-                        full_report = cached_response  # ✅ Use cached response if available
-                    else:
-                        full_report = generate_response(
-                            query=query,
-                            user_id=st.session_state["user_id"],
-                            archetype=selected_archetype,
-                            selected_experts=selected_experts,  # ✅ Ensure experts are passed correctly
-                            uploaded_files=uploaded_files if uploaded_files else None,
-                            # ✅ Ensure document uploads are handled
-                            user_plan=st.session_state["user_plan"]
-                        )
-                        cache_response(cache_key, full_report)  # ✅ Cache AI response
-
-                    # ✅ Store full report in session for summary generation
-                    st.session_state["full_report"] = full_report
-                    st.session_state["initial_response"] = full_report  # ✅ Enables follow-ups
-
-                    # ✅ Ensure follow-up count tracking is initialized correctly
-                    if "follow_up_count" not in st.session_state:
-                        st.session_state["follow_up_count"] = 0
-
-                    # ✅ Log query only if it’s a new AI call (not from cache)
-                    if not cached_response:
-                        log_user_query(st.session_state["user_id"], query, full_report, st.session_state["user_plan"])
-
-                    st.subheader("📜 AI Strategy Report")
-                    st.write(full_report)
-
-                    # ✅ Store full report in session for summary generation
-                    st.session_state["full_report"] = full_report
-
-                    # ✅ Store initial response to enable follow-ups
-                    st.session_state["initial_response"] = full_report  # ✅ This enables follow-ups
-
-                    # ✅ Initialize follow-up count if not set
-                    if "follow_up_count" not in st.session_state:
-                        st.session_state["follow_up_count"] = 0  # ✅ Ensures tracking starts
-
-                        # ✅ Fix: Log the correct query and response (Fix: Replace follow_up_response)
-                        log_user_query(st.session_state["user_id"], query, full_report, st.session_state["user_plan"])
-
-        if st.button("📝 Generate Executive Summary"):
-            with st.spinner("🔄 Summarizing AI Strategy Report..."):
-                summary_report = generate_summary(st.session_state["full_report"], st.session_state["user_id"])
-                st.subheader("📄 Executive Summary (AI-Generated)")
-                st.write(summary_report)
-
-    # ✅ Follow-Up Query Section (AFTER Report & Summary)
-    if "initial_response" in st.session_state and st.session_state["initial_response"]:
-        st.subheader("🔄 Follow-Up Query")
-        follow_up_query = st.text_area("Enter your follow-up question:")
-
-        # ✅ NEW: User selection for how documents should be used
+        # ✅ Document Upload UI
+        max_documents = PLAN_DETAILS[st.session_state["user_plan"]]["documents"]
+        uploaded_files = st.file_uploader(
+            f"📂 Upload up to {PLAN_DETAILS[st.session_state['user_plan']]['documents']} documents (Max 10 pages each)",
+            type=["pdf", "docx", "xlsx", "csv"],
+            accept_multiple_files=True
+        )
+        # ✅ Document Usage Selection (Moved Below Upload, Before Query Input)
         doc_usage_option = st.radio(
             "How should uploaded documents be used?",
             ["Support AI Response", "Summarize & Ask Direct Questions"],
             index=["Support AI Response", "Summarize & Ask Direct Questions"].index(
-                st.session_state["doc_usage_option"])
+                st.session_state.get("doc_usage_option", "Support AI Response")
+            ),
+            key="doc_usage_tab1"  # ✅ Ensures unique ID to prevent Streamlit conflicts
         )
-
         st.session_state["doc_usage_option"] = doc_usage_option  # ✅ Ensure it persists
+
+        # ✅ Show a warning for free/lower-tier users
+        if max_documents == 1:
+            st.warning(
+                "⚠️ Multi-document analysis is a **premium feature**. Upgrade to a higher plan to analyze multiple documents together.")
+        if uploaded_files and len(uploaded_files) > max_documents:
+            st.error(
+                f"❌ Your plan allows only {max_documents} document(s) per upload. Upgrade to a higher tier for multi-document analysis.")
+            uploaded_files = uploaded_files[:max_documents]  # ✅ Restrict uploaded files to allowed limit
+        # ✅ Upgrade Prompt for Free Users
+        if max_documents == 1 and len(uploaded_files) == 1:
+            if st.button("🚀 Upgrade to Unlock Multi-Document Analysis"):
+                st.markdown("[Upgrade Now](https://your-upgrade-url.com)")  # ✅ Replace with actual upgrade link
+
+
+        # ✅ Query Input
+
+        # ✅ Define Query Disclaimer Modal State
+        if "show_query_disclaimer" not in st.session_state:
+            st.session_state["show_query_disclaimer"] = True  # ✅ Show it only on first query input
+
+        # ✅ Show Query Disclaimer Before Allowing Input
+        if st.session_state["show_query_disclaimer"]:
+            with st.expander("🔍 Improve Your Query for Better AI Results!", expanded=True):
+                st.write(
+                    "Your query **directly affects** the quality of the response. Here are some tips for best results:")
+                st.markdown("""
+                - ✅ **Be specific**: Instead of "How do I grow?", try "What are the best customer retention strategies for a SaaS company?"  
+                - ✅ **Include relevant details**: AI performs better with **industry**, **target audience**, or **specific goals**.  
+                - ❌ **Avoid vague requests**: "Tell me about business" → **This will produce a generic response.**  
+                - ⚡ **Keep it clear and structured**: AI works best when queries are **concise** but **informative**.
+                """)
+
+                # ✅ Require Confirmation Before Proceeding
+                if st.button("Got it! Proceed to Query Input"):
+                    st.session_state["show_query_disclaimer"] = False  # ✅ Hide the modal
+                    st.rerun()  # ✅ Refresh the UI
+
+        query = ""  # ✅ Ensures `query` is always defined
+
+        # ✅ Query Input Box (Now Appears Only After Confirmation)
+        if not st.session_state["show_query_disclaimer"]:
+            query = st.text_area("📝 Enter Your Query:",
+                                 placeholder="e.g., What are the best customer retention strategies for SaaS?")
+
+
+        # ✅ Generate Insight Button
+            def get_ai_response():
+                return generate_response(
+                    user_id=st.session_state["user_id"],
+                    query=query,
+                    archetype=st.session_state["selected_archetype_tab1"],  # ✅ Correct variable
+                    selected_experts=st.session_state["selected_experts_tab1"],  # ✅ Correct variable
+                    uploaded_files=uploaded_files if uploaded_files else None,
+                    user_plan=st.session_state["user_plan"]
+                )
+
+
+            if st.button("🚀 Generate Insight"):
+                if not query:
+                    st.warning("⚠ Please enter a query.")
+                else:
+                    with st.spinner("✨ Generating AI-powered strategy..."):
+                        cache_key = f"user_query:{st.session_state['user_id']}:{query}"
+                        cached_response = get_cached_response(cache_key)
+
+
+                        if "full_report" not in st.session_state:
+                            st.session_state["full_report"] = None  # ✅ Ensure `full_report` exists
+                        if cached_response:
+                            full_report = cached_response  # ✅ Use cached response if available
+                        else:
+                            full_report = generate_response(
+                                query=query,
+                                user_id=st.session_state["user_id"],
+                                archetype=st.session_state["selected_archetype_tab1"],  # ✅ Correct variable
+                                selected_experts=st.session_state["selected_experts_tab1"],
+                                # ✅ Correct variable ✅ Ensure experts are passed correctly
+                                uploaded_files=uploaded_files if uploaded_files else None,
+                                # ✅ Ensure document uploads are handled
+                                user_plan=st.session_state["user_plan"],
+                                doc_usage_option=doc_usage_option
+                            )
+                            cache_response(cache_key, full_report)  # ✅ Cache AI response
+
+                        if full_report:
+                            st.session_state["full_report"] = full_report  # ✅ Store it persistently
+
+                        # ✅ Store full report in session for summary generation
+                        st.session_state["full_report"] = full_report
+                        st.session_state["initial_response"] = full_report  # ✅ Enables follow-ups
+
+                        # ✅ Ensure follow-up count tracking is initialized correctly
+                        if "follow_up_count" not in st.session_state:
+                            st.session_state["follow_up_count"] = 0
+
+                        # ✅ Log query only if it’s a new AI call (not from cache)
+                        if not cached_response:
+                            log_user_query(st.session_state["user_id"], query, full_report, st.session_state["user_plan"])
+
+                        st.subheader("📜 AI Strategy Report")
+                        st.write(full_report)
+
+                        # ✅ Store full report in session for summary generation
+                        st.session_state["full_report"] = full_report
+
+                        # ✅ Store initial response to enable follow-ups
+                        st.session_state["initial_response"] = full_report  # ✅ This enables follow-ups
+
+                        # ✅ Initialize follow-up count if not set
+                        if "follow_up_count" not in st.session_state:
+                            st.session_state["follow_up_count"] = 0  # ✅ Ensures tracking starts
+
+                            # ✅ Fix: Log the correct query and response (Fix: Replace follow_up_response)
+                            log_user_query(st.session_state["user_id"], query, full_report, st.session_state["user_plan"])
+
+            # ✅ Show Executive Summary Button ONLY if a report has been generated
+            if "full_report" in st.session_state and st.session_state["full_report"]:
+                if st.button("📝 Generate Executive Summary"):
+                    with st.spinner("🔄 Summarizing AI Strategy Report..."):
+                        summary_report = generate_summary(st.session_state["full_report"], st.session_state["user_id"])
+                        st.session_state["summary_report"] = summary_report  # ✅ Store summary persistently
+
+                # ✅ Always show the full AI-generated report
+                if "full_report" in st.session_state and st.session_state["full_report"]:
+                    st.subheader("📜 AI Strategy Report")
+                    st.write(st.session_state["full_report"])
+
+                # ✅ Show Executive Summary if available
+                if "summary_report" in st.session_state and st.session_state["summary_report"]:
+                    st.subheader("📄 Executive Summary (AI-Generated)")
+                    st.write(st.session_state["summary_report"])
+
+
+
+        # ✅ Strategy Report Generation Section (Independent Feature)
+        # ✅ Tab 2: Structured Strategy Report (PDF)
+        with tab2:
+            st.subheader("📜 Stratogenic AI Execution Plan")
+
+            st.markdown(
+                "🚀 Generate a **structured AI-driven business strategy report** based on your industry, revenue model, and key business goals. "
+                "This feature leverages **expert-backed insights, archetypal strategy approaches, and AI-driven execution plans**."
+            )
+            industry_option = st.selectbox(
+                "📍 Select Industry (or choose 'Other' to enter manually)",
+                ["Tech", "Retail", "Finance", "Healthcare", "Fundraising", "Charity", "Other"]
+            )
+            if industry_option == "Other":
+                industry = st.text_input("📝 Enter Your Industry",
+                                         placeholder="e.g., Climate Tech, Social Impact, Education")
+            else:
+                industry = industry_option
+            goal = st.text_input("🎯 Business Goal", placeholder="Expand into a new market")
+            revenue_model = st.selectbox("💰 Revenue Model", ["Subscription", "One-time purchase", "Freemium", "Other"])
+            competitors = st.text_area("🏆 Competitor Names (Optional)")
+
+            # ✅ Ensure Archetype is Stored in Session State to Prevent 'None' Issues
+            if "selected_archetype_tab2" not in st.session_state:
+                st.session_state["selected_archetype_tab2"] = list(archetype_prompts.keys())[
+                    0]  # Default to first archetype
+
+            st.session_state["selected_archetype_tab2"] = st.selectbox(
+                "🎭 Select Your Archetype",
+                options=list(archetype_prompts.keys()),
+                index=list(archetype_prompts.keys()).index(st.session_state["selected_archetype_tab2"])
+                # Preserve last selection
+            )
+            selected_archetype = st.session_state["selected_archetype_tab2"]
+
+            # ✅ Ensure `selected_experts_tab2` is initialized before using it
+            if "selected_experts_tab2" not in st.session_state:
+                st.session_state["selected_experts_tab2"] = []  # ✅ Default to an empty list
+
+            # ✅ Create expert selection widget WITHOUT overwriting session state after instantiation
+            selected_experts_display_tab2 = st.multiselect(
+                "🎓 Select Expert Insights",
+                options=list(expert_prompts.keys()),
+                default=st.session_state["selected_experts_tab2"],  # ✅ Preserve selection
+                max_selections=3,
+                key="selected_experts_tab2"  # ✅ Assign a unique key
+            )
+
+            # ✅ Instead of modifying session state, check the variable directly
+            if "selected_experts_tab2" not in st.session_state:
+                st.session_state["selected_experts_tab2"] = []  # ✅ Default to an empty list
+            elif set(selected_experts_tab2_display) != set(st.session_state["selected_experts_tab2"]):
+                st.session_state["selected_experts_tab2"] = selected_experts_tab2_display  # ✅ Update only when needed
+
+                    # ✅ Ensure at least one expert is selected
+            if not selected_experts_display_tab2:
+                st.warning("⚠ Please select at least one expert.")
+
+            if st.button("🚀 Generate Strategy Report"):
+                if not selected_archetype:
+                    st.warning("⚠ Please select an Archetype.")
+                elif not selected_experts:
+                    st.warning("⚠ Please select at least one Expert.")
+                else:
+                    structured_inputs = {
+                        "industry": industry,
+                        "goal": goal,
+                        "revenue_model": revenue_model,
+                        "competitors": competitors
+                    }
+                    if not st.session_state["selected_archetype_tab2"]:
+                        st.warning("⚠ Please select an Archetype.")
+                    elif not st.session_state["selected_experts_tab2"] or len(
+                            st.session_state["selected_experts_tab2"]) == 0:
+                        st.warning("⚠ Please select at least one Expert.")
+                    else:
+                        pdf_file = generate_strategy_pdf(
+                            st.session_state["user_id"], structured_inputs, st.session_state["selected_archetype_tab2"],
+                            st.session_state["selected_experts_tab2"]
+                        )
+                        st.success(f"✅ Strategy Report Generated! [Download Here]({pdf_file})")
+
+    # ✅ Follow-Up Query Section (AFTER Report & Summary)
+    if "initial_response" in st.session_state and st.session_state["initial_response"] and "full_report" in st.session_state:
+        st.subheader("🔄 Follow-Up Query")
+        follow_up_query = st.text_area("Enter your follow-up question:")
+
 
         # ✅ Ensure variables are initialized before they are used
         remaining_follow_ups = PLAN_DETAILS[st.session_state["user_plan"]]["follow_ups"]
@@ -385,7 +529,8 @@ if st.session_state["user_id"]:
             ["Support AI Response", "Summarize & Ask Direct Questions"],
             index=["Support AI Response", "Summarize & Ask Direct Questions"].index(
                 st.session_state["doc_usage_option"]
-            )
+            ),
+            key="doc_usage_tab2"  # ✅ Unique key to prevent duplicate ID error
         )
 
     # ✅ Ensure follow-up tracking variables are always defined
@@ -404,8 +549,8 @@ if st.session_state["user_id"]:
                 st.session_state["follow_up_response"] = generate_response(
                     user_id=st.session_state["user_id"],
                     query=follow_up_query,
-                    archetype=selected_archetype,
-                    selected_experts=selected_experts,
+                    archetype=st.session_state["selected_archetype_tab2"],  # ✅ Correct variable
+                    selected_experts=st.session_state["selected_experts_tab2"],  # ✅ Correct variable
                     uploaded_files=None,
                     user_plan=st.session_state["user_plan"],
                     doc_usage_option=doc_usage_option  # ✅ No longer undefined
