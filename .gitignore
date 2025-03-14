@@ -1,0 +1,22 @@
+# Created by venv; see https://docs.python.org/3/library/venv.html
+*
+# 🚀 Ignore API keys & secrets
+.env
+config.json
+
+# 🚀 Ignore Python virtual environment
+.venv/
+# Ignore Virtual Environments
+.venv/
+venv/
+
+
+# 🚀 Ignore compiled Python files
+__pycache__/
+*.pyc
+*.pyo
+
+# 🚀 Ignore log & cache files
+*.log
+logs/
+cache/
